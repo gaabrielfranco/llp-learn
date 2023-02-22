@@ -1,0 +1,18 @@
+site_name: LLP-Learn
+
+theme:
+  name: "material"
+
+plugins:
+- search
+- mkdocstrings:
+    default_handler: python
+    handlers:
+      python:
+        options:
+          show_source: false
+
+nav:
+  - LLP-Learn Documentation: index.md
+  - reference.md
+
