@@ -84,8 +84,8 @@ class gridSearchCV():
                 "There was not possible to compute the error. Verify the loss_type parameter. The value used was: %s" % self.loss_type)
 
     def _evaluate_candidate(self, X, bags, proportions, arg):
-        estimator, param_id, param, train_index, validation_index = arg
-        estimator = deepcopy(estimator)
+        est, param_id, param, train_index, validation_index = arg
+        estimator = deepcopy(est)
         estimator.set_params(**param)
         try:
             estimator.fit(X[train_index], bags[train_index], proportions)
@@ -118,6 +118,43 @@ class gridSearchCV():
                 "There was not possible to compute the error. Verify the cv_type parameter. The value used was: %s" % self.cv_type)
 
         return (estimator, param_id, param, train_index, validation_index, err)
+    
+    def _aggregate_results(self, r):
+        df = pd.DataFrame(
+            r, columns="model id params train_index validation_index error".split())
+        
+        # Removing hyperparameters that do not converged in all folds
+        df = df.groupby("id").filter(lambda x: len(x) == self.cv)
+
+        if self.central_tendency_metric == "mean":
+            df_results = df["id error".split()].groupby("id").mean()
+        elif self.central_tendency_metric == "median":
+            df_results = df["id error".split()].groupby("id").median()
+        else:
+            raise Exception(
+                "There was not possible to computate the error. Verify the central_tendency_metric parameter.")
+
+        return df, df_results
+    
+    def _fit_best_estimator(self, X, bags, proportions, df, df_results):
+        best_estimator_id = int(df_results.idxmin())
+        df_best_estimator = df[df.id == best_estimator_id]
+        self.best_params_ = df_best_estimator["params"].iloc[0]
+
+        if self.refit:
+            self.best_estimator_ = deepcopy(self.estimator)
+            self.best_estimator_.set_params(**self.best_params_)
+            try:
+                self.best_estimator_.fit(X, bags, proportions)
+            except ValueError:
+                self.best_estimator_ = df_best_estimator[df_best_estimator.error == df_best_estimator.error.min(
+                )].iat[0, 0]
+                warnings.warn("The best hyperparameters found by the CV process did not converge in the refit process. \
+                    The best hyperparameters are " + str(self.best_params_))
+        else:
+            self.best_estimator_ = df_best_estimator[df_best_estimator.error == df_best_estimator.error.min(
+            )].iat[0, 0]
+
 
     def fit(self, X, bags, proportions, y=None):
         """
@@ -215,37 +252,12 @@ class gridSearchCV():
 
         if len(r) == 0:
             raise ValueError("There was no (C, C_p) with convergence!")
-
+        
         # Step 5 - Aggregate the results by hyperparameters and compute the mean for each one
-        df = pd.DataFrame(
-            r, columns="model id params train_index validation_index error".split())
-
-        if self.central_tendency_metric == "mean":
-            df_results = df["id error".split()].groupby("id").mean()
-        elif self.central_tendency_metric == "median":
-            df_results = df["id error".split()].groupby("id").median()
-        else:
-            raise Exception(
-                "There was not possible to computate the error. Verify the central_tendency_metric parameter.")
+        df, df_results = self._aggregate_results(r)
 
         # Step 6 - Choose the best estimator
-        best_estimator_id = int(df_results.idxmin())
-        df_best_estimator = df[df.id == best_estimator_id]
-        self.best_params_ = df_best_estimator["params"].iloc[0]
-
-        if self.refit:
-            self.best_estimator_ = deepcopy(self.estimator)
-            self.best_estimator_.set_params(**self.best_params_)
-            try:
-                self.best_estimator_.fit(X, bags, proportions)
-            except ValueError:
-                self.best_estimator_ = df_best_estimator[df_best_estimator.error == df_best_estimator.error.min(
-                )].iat[0, 0]
-                warnings.warn("The best hyperparameters found by the CV process did not converge in the refit process. \
-                    The best hyperparameters are " + str(self.best_params_))
-        else:
-            self.best_estimator_ = df_best_estimator[df_best_estimator.error == df_best_estimator.error.min(
-            )].iat[0, 0]
+        self._fit_best_estimator(X, bags, proportions, df, df_results)
 
     def predict(self, X, bags=None):
         if bags is None:
