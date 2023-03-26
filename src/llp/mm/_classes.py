@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from ._base import MMBaseClassifier
@@ -23,11 +24,11 @@ class MM(MMBaseClassifier):
         proportions : array-like, shape = (n_bags,)
             The bags proportions.
         """
-        
-        bioc_url = urlopen('https://raw.githubusercontent.com/giorgiop/almostnolabel/master/mean.map.R')
-        string = bioc_url.read().decode('utf-8')
-        mm = SignatureTranslatedAnonymousPackage(string, "map.mean")
-        self.map_mean = mm.mean_map
+
+        with open("{}/almostnolabel/mean.map.R".format(os.path.dirname(os.path.abspath(__file__))), "r") as f:
+            string = f.read()
+        mm = SignatureTranslatedAnonymousPackage(string, "mean.map")
+        self.mean_map = mm.mean_map
 
 
         pandas2ri.activate()
@@ -38,7 +39,7 @@ class MM(MMBaseClassifier):
         trainset = trainset.astype({"bag": int})
 
         # Calling the R function
-        self.w = self.map_mean(trainset, self.lmd)
+        self.w = self.mean_map(trainset, self.lmd)
 
 class LMM(MMBaseClassifier):
     def __init__(self, lmd, gamma, sigma, similarity="G,s", random_state=None):
@@ -59,8 +60,8 @@ class LMM(MMBaseClassifier):
         proportions : array-like, shape = (n_bags,)
             The bags proportions.
         """
-        bioc_url = urlopen('https://raw.githubusercontent.com/giorgiop/almostnolabel/master/laplacian.mean.map.R')
-        string = bioc_url.read().decode('utf-8')
+        with open("{}/almostnolabel/laplacian.mean.map.R".format(os.path.dirname(os.path.abspath(__file__))), "r") as f:
+            string = f.read()
         lmm = SignatureTranslatedAnonymousPackage(string, "laplacian.mean.map")
         self.laplacian = lmm.laplacian
         self.laplacian_mean_map = lmm.laplacian_mean_map
@@ -104,10 +105,10 @@ class AMM(MMBaseClassifier):
         proportions : array-like, shape = (n_bags,)
             The bags proportions.
         """
-        bioc_url = urlopen('https://raw.githubusercontent.com/giorgiop/almostnolabel/master/laplacian.mean.map.R')
-        string_lmm = bioc_url.read().decode('utf-8')
-        bioc_url = urlopen('https://raw.githubusercontent.com/giorgiop/almostnolabel/master/alternating.mean.map.R')
-        string_amm = bioc_url.read().decode('utf-8')
+        with open("{}/almostnolabel/laplacian.mean.map.R".format(os.path.dirname(os.path.abspath(__file__))), "r") as f:
+            string_lmm = f.read()
+        with open("{}/almostnolabel/alternating.mean.map.R".format(os.path.dirname(os.path.abspath(__file__))), "r") as f:
+            string_amm = f.read()
         # Concate the two strings
         string = string_lmm + "\n" + string_amm
         amm = SignatureTranslatedAnonymousPackage(string, "amm")
