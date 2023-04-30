@@ -82,7 +82,7 @@ class LMM(MMBaseClassifier):
         self.w = self.laplacian_mean_map(trainset, laplacian, self.lmd, self.gamma)
 
 class AMM(MMBaseClassifier):
-    def __init__(self, lmd, gamma, sigma, similarity="G,s", init="LMM", random_state=None):
+    def __init__(self, lmd, gamma, sigma, similarity="G,s", init="LMM", minmax=True, random_state=None):
         super().__init__(lmd, random_state)
         self.gamma = gamma
         self.sigma = sigma
@@ -92,6 +92,7 @@ class AMM(MMBaseClassifier):
         if init not in ["LMM", "MM"]:
             raise ValueError("Init must be either 'LMM' or 'MM'")
         self.init = init
+        self.minmax = minmax
 
     def fit(self, X, bags, proportions):
         """
@@ -131,6 +132,6 @@ class AMM(MMBaseClassifier):
             laplacian = None
 
         # Calling the R function
-        self.w = self.alternating_mean_map(trainset, laplacian, False, self.lmd, self.gamma, rpy2.rinterface.NULL, self.init, 30)
+        self.w = self.alternating_mean_map(trainset, laplacian, self.minmax, self.lmd, self.gamma, rpy2.rinterface.NULL, self.init, 30)
         self.w = robjects.conversion.rpy2py(self.w)
         self.w = np.array(self.w.theta)

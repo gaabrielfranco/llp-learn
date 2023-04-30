@@ -45,11 +45,13 @@ class MLPBatchAvg(nn.Module):
 
 class DLLP(baseLLPClassifier, ABC):
     
-    def __init__(self, lr, n_epochs, in_features=2, hidden_layer_sizes=(100,)):
+    def __init__(self, lr, n_epochs, in_features=2, out_features=2, hidden_layer_sizes=(100,), verbose=False, random_state=None):
         self.n_epochs = n_epochs
-        self.model = MLPBatchAvg(in_features=in_features, out_features=2, hidden_layer_sizes=hidden_layer_sizes)
+        self.model = MLPBatchAvg(in_features=in_features, out_features=out_features, hidden_layer_sizes=hidden_layer_sizes)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.loss_batch = torch.nn.KLDivLoss(reduction='batchmean')
+        self.verbose = verbose
+        self.random_state = random_state
 
     def set_params(self, **params):
         self.model.set_params(**params)
@@ -73,9 +75,9 @@ class DLLP(baseLLPClassifier, ABC):
 
         self.model.train()
         loss_epoch = []
-        with tqdm(range(self.n_epochs), desc='Training model', unit='epoch') as t:
+        with tqdm(range(self.n_epochs), desc='Training model', unit='epoch', disable=not self.verbose) as t:
             for _ in t:
-                shuffled_bags = shuffle(unique_bags)
+                shuffled_bags = shuffle(unique_bags, random_state=self.random_state)
                 loss_sum = []
                 for bag in shuffled_bags:
                     # prepare bag data

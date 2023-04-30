@@ -1,3 +1,4 @@
+import collections
 import numpy as np
 from math import ceil
 import numbers
@@ -153,12 +154,17 @@ class SplitBagShuffleSplit():
                              "%s of type %s was passed."
                              % (n_splits, type(n_splits)))
 
-        if not isinstance(test_size, numbers.Real):
-            raise ValueError("The test size must be of Real type. "
+        if not isinstance(test_size, numbers.Real) and not isinstance(test_size, (collections.abc.Sequence, np.ndarray)):
+            raise ValueError("The test size must be of Real type or an array. "
                              "%s of type %s was passed."
                              % (test_size, type(test_size)))
-
-        if test_size < 0.0 or test_size > 1.0:
+        
+        if isinstance(test_size, numbers.Real):
+            test_size = np.array([test_size])
+        else:
+            test_size = np.array(test_size)
+        
+        if np.any(test_size <= 0.0) or np.any(test_size >= 1.0):
             raise ValueError("The test size must be between 0 and 1. "
                              "%s was passed."
                              % (test_size))
@@ -186,7 +192,14 @@ class SplitBagShuffleSplit():
                 The testing set indices for that split.
         """
 
-        num_bags = bags.max() + 1
+        num_bags = len(np.unique(bags))
+
+        if len(self.test_size) == 1:
+            self.test_size = np.full(num_bags, self.test_size[0])
+
+        if len(self.test_size) != num_bags:
+            raise ValueError("The length of test_size is not the same as the number of bags. "
+                             "%d != %d" % (len(self.test_size), num_bags))
 
         all_bags = []
         n_test_bags = []
@@ -195,7 +208,7 @@ class SplitBagShuffleSplit():
         for i in range(num_bags):
             bag_i = np.where(bags == i)[0]
             all_bags.append(bag_i)
-            n_test = round(self.test_size * len(bag_i))
+            n_test = round(self.test_size[i] * len(bag_i))
             n_test_bags.append(n_test)
 
         random = check_random_state(self.random_state)
@@ -247,16 +260,21 @@ class SplitBagBootstrapSplit():
                              "%s of type %s was passed."
                              % (n_splits, type(n_splits)))
 
-        if not isinstance(test_size, numbers.Real):
-            raise ValueError("The test size must be of Real type. "
+        if not isinstance(test_size, numbers.Real) and not isinstance(test_size, (collections.abc.Sequence, np.ndarray)):
+            raise ValueError("The test size must be of Real type or an array. "
                              "%s of type %s was passed."
                              % (test_size, type(test_size)))
-
-        if test_size < 0.0 or test_size > 1.0:
+        
+        if isinstance(test_size, numbers.Real):
+            test_size = np.array([test_size])
+        else:
+            test_size = np.array(test_size)
+        
+        if np.any(test_size <= 0.0) or np.any(test_size >= 1.0):
             raise ValueError("The test size must be between 0 and 1. "
                              "%s was passed."
                              % (test_size))
-
+        
         self.n_splits = n_splits
         self.test_size = test_size
         self.random_state = random_state
@@ -280,7 +298,14 @@ class SplitBagBootstrapSplit():
                 The testing set indices for that split.
         """
 
-        num_bags = bags.max() + 1
+        num_bags = len(np.unique(bags))
+
+        if len(self.test_size) == 1:
+            self.test_size = np.full(num_bags, self.test_size[0])
+
+        if len(self.test_size) != num_bags:
+            raise ValueError("The length of test_size is not the same as the number of bags. "
+                             "%d != %d" % (len(self.test_size), num_bags))
 
         all_bags = []
         n_test_bags = []
@@ -289,7 +314,7 @@ class SplitBagBootstrapSplit():
         for i in range(num_bags):
             bag_i = np.where(bags == i)[0]
             all_bags.append(bag_i)
-            n_test = round(self.test_size * len(bag_i))
+            n_test = round(self.test_size[i] * len(bag_i))
             n_test_bags.append(n_test)
 
         random = check_random_state(self.random_state)
@@ -300,7 +325,7 @@ class SplitBagBootstrapSplit():
             test_index = np.empty(0, dtype=int)
             for i in range(num_bags):
                 bag_i = all_bags[i]
-                test_size_bag = round(self.test_size * len(bag_i))
+                test_size_bag = n_test_bags[i]
                 train_size_bag = len(bag_i) - test_size_bag
                 test_index = np.concatenate(
                     (test_index, random.choice(all_bags[i], test_size_bag)))
