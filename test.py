@@ -6,11 +6,10 @@ import pandas as pd
 from sklearn.datasets import make_classification
 from sklearn.metrics import classification_report
 from sklearn.datasets import make_blobs, make_circles, make_moons
-sys.path.append('src')
 
-from llp.mm import MM, LMM, AMM
-from llp.dllp import DLLP
-from llp.model_selection import gridSearchCV, SplitBagShuffleSplit, SplitBagBootstrapSplit
+from llp_learn.mm import MM, LMM, AMM
+from llp_learn.dllp import DLLP
+from llp_learn.model_selection import gridSearchCV, SplitBagShuffleSplit, SplitBagBootstrapSplit
 
 random = np.random.RandomState(42)
 
