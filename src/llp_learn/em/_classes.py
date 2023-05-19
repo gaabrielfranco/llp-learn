@@ -1,6 +1,6 @@
 import numpy as np
 from copy import copy
-from llp.base import baseLLPClassifier
+from llp_learn.base import baseLLPClassifier
 from abc import ABC
 from sklearn.svm import SVC, LinearSVC
 from sklearn.linear_model import LogisticRegression

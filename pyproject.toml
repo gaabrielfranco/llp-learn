@@ -32,6 +32,8 @@ dependencies = [
   "seaborn ~= 0.12.2",
   "tqdm ~= 4.65.0",
   "joblib ~= 1.2.0 ",
+  "torch ~= 1.13.1",
+  "rpy2 ~= 3.5.10",
 ]
 dynamic = ["version"]
 
@@ -41,7 +43,7 @@ Issues = "https://github.com/unknown/llp-learn/issues"
 Source = "https://github.com/unknown/llp-learn"
 
 [tool.hatch.version]
-path = "src/llp-learn/__about__.py"
+path = "src/llp_learn/__about__.py"
 
 [tool.hatch.envs.default]
 dependencies = [

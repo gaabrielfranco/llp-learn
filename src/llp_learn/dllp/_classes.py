@@ -6,7 +6,7 @@ from tqdm import tqdm
 from sklearn.utils import shuffle
 import sys
 
-from llp.base import baseLLPClassifier
+from llp_learn.base import baseLLPClassifier
 from abc import ABC, abstractmethod
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -67,7 +67,10 @@ class DLLP(baseLLPClassifier, ABC):
         with torch.no_grad():
             outputs, _ = self.model(x_test)
 
-        return outputs.argmax(dim=1).numpy()
+        y_pred = outputs.argmax(dim=1).numpy()
+        y_pred[y_pred == 0] = -1
+
+        return y_pred
 
     def fit(self, X, bags, proportions):
         unique_bags = np.unique(bags)

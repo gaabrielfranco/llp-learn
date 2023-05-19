@@ -1,5 +1,5 @@
-from llp.base import baseLLPClassifier
-from llp.util import check_random_state
+from llp_learn.base import baseLLPClassifier
+from llp_learn.util import check_random_state
 from abc import ABC, abstractmethod
 import numpy as np
 from copy import deepcopy

@@ -2,7 +2,7 @@ import collections
 import numpy as np
 from math import ceil
 import numbers
-from llp.util import check_random_state
+from llp_learn.util import check_random_state
 from collections import defaultdict
 
 __all__ = ["SplitBagKFold", "FullBagStratifiedKFold", "SplitBagShuffleSplit", "SplitBagBootstrapSplit"]

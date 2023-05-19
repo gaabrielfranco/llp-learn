@@ -1,4 +1,8 @@
 
+# Original code provided by the the authors of the paper:
+# "(Almost) no label no cry" from NeurIPS'14
+# See: https://github.com/giorgiop/almostnolabel
+
 #------------------------------------------------------------------------------
 #This implements AMM^{min,max}
 #

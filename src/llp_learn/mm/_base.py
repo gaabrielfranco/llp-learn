@@ -1,4 +1,4 @@
-from llp.base import baseLLPClassifier
+from llp_learn.base import baseLLPClassifier
 from abc import ABC, abstractmethod
 import numpy as np
 from scipy.special import expit
