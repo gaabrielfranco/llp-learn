@@ -38,9 +38,9 @@ dependencies = [
 dynamic = ["version"]
 
 [project.urls]
-Documentation = "https://github.com/unknown/llp-learn#readme"
-Issues = "https://github.com/unknown/llp-learn/issues"
-Source = "https://github.com/unknown/llp-learn"
+Documentation = "https://github.com/gaabrielfranco/llp-learn#readme"
+Issues = "https://github.com/gaabrielfranco/llp-learn/issues"
+Source = "https://github.com/gaabrielfranco/llp-learn"
 
 [tool.hatch.version]
 path = "src/llp_learn/__about__.py"
