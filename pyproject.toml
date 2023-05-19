@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llp-learn"
-description = ''
+description = "Learning from Label Proportions (LLP) methods in Python"
 readme = "README.md"
 requires-python = ">=3.7"
 license = "MIT"
@@ -24,14 +24,14 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-  "numpy",
-  "scipy",
-  "scikit-learn",
-  "matplotlib",
-  "pandas",
-  "seaborn",
-  "tqdm",
-  "joblib",
+  "numpy ~= 1.24.2",
+  "scipy ~= 1.10.1",
+  "scikit-learn ~= 1.2.2",
+  "matplotlib ~= 3.7.1",
+  "pandas ~= 1.5.3",
+  "seaborn ~= 0.12.2",
+  "tqdm ~= 4.65.0",
+  "joblib ~= 1.2.0 ",
 ]
 dynamic = ["version"]
 
@@ -41,7 +41,7 @@ Issues = "https://github.com/unknown/llp-learn/issues"
 Source = "https://github.com/unknown/llp-learn"
 
 [tool.hatch.version]
-path = "llp_learn/__about__.py"
+path = "src/llp-learn/__about__.py"
 
 [tool.hatch.envs.default]
 dependencies = [
@@ -68,6 +68,7 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+
 
 [tool.hatch.envs.docs]
 dependencies = [
