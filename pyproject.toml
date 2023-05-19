@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "llp-learn"
 description = "Learning from Label Proportions (LLP) methods in Python"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 license = "MIT"
 keywords = []
 authors = [
@@ -15,7 +15,6 @@ authors = [
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
@@ -32,8 +31,7 @@ dependencies = [
   "seaborn ~= 0.12.2",
   "tqdm ~= 4.65.0",
   "joblib ~= 1.2.0 ",
-  "torch ~= 1.13.1",
-  "rpy2 ~= 3.5.10",
+  "torch ~= 2.0.1",
 ]
 dynamic = ["version"]
 
@@ -55,7 +53,7 @@ cov = "pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=llp_le
 no-cov = "cov --no-cov {args}"
 
 [[tool.hatch.envs.test.matrix]]
-python = ["37", "38", "39", "310", "311"]
+python = ["38", "39", "310", "311"]
 
 [tool.coverage.run]
 branch = true

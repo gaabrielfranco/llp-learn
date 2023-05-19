@@ -3,7 +3,7 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/llp-learn.svg)](https://pypi.org/project/llp-learn)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/llp-learn.svg)](https://pypi.org/project/llp-learn)
 
-LLP-learn is a library that provides implementation of methods for Learning from Label Proportions. Besides Python implementation of LLP methods, we provided a Python wrapper for the algorithms implemented in R by [AlmostNoLabel](https://github.com/giorgiop/almostnolabel).
+LLP-learn is a library that provides implementation of methods for Learning from Label Proportions.
 
 -----
 
