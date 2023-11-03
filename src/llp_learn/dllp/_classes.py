@@ -68,7 +68,6 @@ class DLLP(baseLLPClassifier, ABC):
             outputs, _ = self.model(x_test)
 
         y_pred = outputs.argmax(dim=1).numpy()
-        y_pred[y_pred == 0] = -1
 
         return y_pred
 
