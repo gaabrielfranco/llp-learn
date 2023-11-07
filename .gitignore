@@ -1,6 +1,7 @@
 # Folders with sample data for testing purposes
 sample-datasets-ci/
 sample-mixbag-datasets/
+Best_CP.pkl
 
 # MacOS files
 .DS_Store

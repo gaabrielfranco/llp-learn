@@ -17,6 +17,11 @@ from torchvision.models import resnet18
 np.set_printoptions(threshold=sys.maxsize)
 
 class MixBag(baseLLPClassifier, ABC):
+
+    """
+        TODO: 
+            - TODOs in the code
+    """
     
     def __init__(self, lr, n_epochs, consistency, choice, confidence_interval, pretrained=True, verbose=False, random_state=None):
         self.n_epochs = n_epochs
@@ -31,7 +36,13 @@ class MixBag(baseLLPClassifier, ABC):
         self.pretrained = pretrained
         self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
-        # We wont't use early stopping as the original implementation
+        self.seed = random_state if random_state is not None else self.random.randint(2**32-1)
+        # Setting the seed for reproducibility in PyTorch
+        torch.manual_seed(self.seed)  # fix the initial value of the network weight
+        torch.cuda.manual_seed(self.seed)  # for cuda
+        torch.cuda.manual_seed_all(self.seed)  # for multi-GPU
+        torch.backends.cudnn.deterministic = True  # choose the determintic algorithm
+
 
         # Consistency loss
         self.consistency = consistency
@@ -43,6 +54,9 @@ class MixBag(baseLLPClassifier, ABC):
             self.consistency_criterion = PiModelLoss()
         else:
             raise NameError("Unknown consistency criterion")
+
+    def worker_init_fn(self):
+        np.random.seed(self.seed)
         
     def model_import(self, pretrained, channels, classes):
         model = resnet18(weights="IMAGENET1K_V1" if pretrained else None)
@@ -149,10 +163,13 @@ class MixBag(baseLLPClassifier, ABC):
             train_dataset,
             batch_size=1, # Bags as batches
             shuffle=False,
+            worker_init_fn=self.worker_init_fn(),
             num_workers=1, #TODO: maybe the n_jobs have to be used here instead of copying multiple versions of the NN.
         )
 
         self.model.train()
+
+        best_loss = np.inf
         
         with tqdm(range(self.n_epochs), desc='Training model', unit='epoch', disable=not self.verbose) as t:
             for epoch in t:
@@ -192,3 +209,10 @@ class MixBag(baseLLPClassifier, ABC):
                     losses.append(loss.item())
                 train_loss = np.array(losses).mean()
                 print("[Epoch: %d/%d] train loss: %.4f" % (epoch + 1, self.n_epochs, train_loss))
+
+                if train_loss < best_loss:
+                    torch.save(self.model.state_dict(), "Best_CP.pkl")
+                    best_loss = train_loss
+
+        # Using the best model
+        self.model.load_state_dict(torch.load("Best_CP.pkl", map_location=self.device))

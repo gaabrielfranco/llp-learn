@@ -63,15 +63,28 @@ if __name__ == "__main__":
     # X_train = X_train.reshape(-1, 1, 32, 32).astype(np.float32)
     # X_test = X_test.reshape(-1, 1, 32, 32).astype(np.float32)
 
+    import torchvision.transforms as transforms
+    import torch
+
+    seed = 0
+
+    np.random.seed(seed)
+    torch.manual_seed(seed)  # fix the initial value of the network weight
+    torch.cuda.manual_seed(seed)  # for cuda
+    torch.cuda.manual_seed_all(seed)  # for multi-GPU
+    torch.backends.cudnn.deterministic = True  # choose the determintic algorithm
+    #torch.use_deterministic_algorithms(True)
+
     X_train = np.load("sample-mixbag-datasets/train_bags.npy")
     y_train = np.load("sample-mixbag-datasets/train_labels.npy")
     proportions = np.load("sample-mixbag-datasets/train_lps.npy")
 
-    X_test = np.load("sample-mixbag-datasets/val_bags.npy")
-    y_test = np.load("sample-mixbag-datasets/val_labels.npy")
+    X_test = np.load("sample-mixbag-datasets/test_data.npy")
+    y_test = np.load("sample-mixbag-datasets/test_label.npy")
 
-    import torchvision.transforms as transforms
-    import torch
+    X_test = X_test.transpose(0, 3, 1, 2)
+    X_test = torch.tensor(X_test).float()
+
     transform = transforms.Compose(
                 [
                     transforms.ToTensor(),
@@ -86,14 +99,15 @@ if __name__ == "__main__":
     for bag in X_train:
         new_X_train.append([transform(x) for x in bag])
     new_X_train = np.array(new_X_train)
-    X_train = torch.tensor(new_X_train)
+    X_train = new_X_train
+    #X_train = torch.tensor(new_X_train)
 
-    new_X_test = []
-    for bag in X_test:
-        new_X_test.append([transform(x) for x in bag])
-    X_test = np.array(new_X_test)
-    X_test = X_test.reshape(-1, 3, 28, 28)
-    y_test = y_test.reshape(-1)
+    # new_X_test = []
+    # for bag in X_test:
+    #     new_X_test.append([transform(x) for x in bag])
+    # X_test = np.array(new_X_test)
+    # X_test = X_test.reshape(-1, 3, 28, 28)
+    # y_test = y_test.reshape(-1)
     
     mb = MixBag(lr=0.001, n_epochs=10, consistency="none", choice="uniform", confidence_interval=0.005, verbose=True, random_state=seed[execution])
     mb.fit(X_train, y_train, proportions) #fitting with the test just for testing (smaller set)
