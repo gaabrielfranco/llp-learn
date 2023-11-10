@@ -7,7 +7,7 @@ from sklearn.utils import shuffle
 import sys
 
 from llp_learn.base import baseLLPClassifier
-from abc import ABC, abstractmethod
+from abc import ABC
 
 np.set_printoptions(threshold=sys.maxsize)
 

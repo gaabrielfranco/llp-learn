@@ -1,53 +1,19 @@
 import contextlib
-import math
-
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-def cross_entropy_loss(input, target, eps=1e-8):
-    # input = torch.clamp(input, eps, 1 - eps)
-    loss = -target * torch.log(input + eps)
-    return loss
-
-
-class ProportionLoss(nn.Module):
-    def __init__(self, eps=1e-8):
-        super().__init__()
-        self.eps = eps
-
-    def forward(self, input, target):
-        loss = cross_entropy_loss(input, target, eps=self.eps)
-        loss = torch.sum(loss, dim=-1)
-        loss = loss.mean()
-        return loss
-    
-class ProportionLossAbs(nn.Module):
-    def __init__(self, eps=1e-8):
-        super().__init__()
-        self.eps = eps
-
-    def forward(self, input, target):
-        loss = torch.abs(input - target)
-        loss = torch.sum(loss, dim=-1)
-        loss = loss.sum()
-        return loss
-
-
 class ConfidentialIntervalLoss(nn.Module):
     def __init__(self, eps=1e-8):
         super().__init__()
         self.eps = eps
+        self.loss = nn.KLDivLoss(reduction="batchmean")
 
     def forward(self, pred, target, min_value, max_value):
-        mask = torch.where((pred <= max_value) & (pred >= min_value), target, pred)
-        loss = cross_entropy_loss(mask, target, eps=self.eps)
-        loss = torch.sum(loss, dim=-1)
-        loss = loss.mean()
+        mask_pred = torch.where((pred <= max_value) & (pred >= min_value), target, pred)
+        loss = self.loss(mask_pred.log(), target)
         return loss
-
 
 @contextlib.contextmanager
 def _disable_tracking_bn_stats(model):
@@ -65,11 +31,9 @@ def _l2_normalize(d):
     d /= torch.norm(d_reshaped, dim=1, keepdim=True) + 1e-8
     return d
 
-
 def get_rampup_weight(weight, iteration, rampup):
     alpha = weight * sigmoid_rampup(iteration, rampup)
     return alpha
-
 
 def sigmoid_rampup(current, rampup_length):
     """Exponential rampup from https://arxiv.org/abs/1610.02242"""
@@ -118,7 +82,6 @@ class VATLoss(nn.Module):
 
         return lds
 
-
 class GaussianNoise(nn.Module):
     """add gasussian noise into feature"""
 
@@ -144,48 +107,7 @@ class PiModelLoss(nn.Module):
             logits2 = model(self.gn(x))
             probs2 = F.softmax(logits2, dim=1)
         loss = F.mse_loss(probs1, probs2, reduction="sum") / x.size(0)
-        # return loss, logits1
         return loss
-
-
-class DynamicWeight(object):
-    def __init__(self, lam, K=3, T=1):
-        self.num_loss = 3
-        self.loss_t1 = [None, None, None]
-        self.loss_t2 = [None, None, None]
-        self.w = [None, None, None]
-        self.e = [None, None, None]
-
-        self.lam = lam
-
-        self.K, self.T = K, T
-        for w in self.lam:
-            if w == 0:
-                self.K -= 1
-
-    def calc_ratio(self):
-        for k in range(self.num_loss):
-            if self.lam[k] != 0:
-                self.w[k] = self.loss_t1[k] / self.loss_t2[k]
-                self.e[k] = math.e ** (self.w[k] / self.T)
-            else:
-                self.e[k] = 0
-
-        for k in range(self.num_loss):
-            self.lam[k] = self.K * self.e[k] / sum(self.e)
-
-    def __call__(self, loss_nega, loss_posi, loss_MIL):
-        loss = [loss_nega, loss_posi, loss_MIL]
-        for k in range(self.num_loss):
-            self.loss_t2[k] = self.loss_t1[k]
-            self.loss_t1[k] = loss[k]
-
-        # t = 3, ...
-        if self.loss_t2[0] is not None:
-            self.calc_ratio()
-
-        return self.lam
-
 
 def consistency_loss_function(consistency, consistency_criterion, model, train_loader, img, epoch, batch_size):
     if consistency != "none":

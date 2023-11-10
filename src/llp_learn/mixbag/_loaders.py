@@ -32,10 +32,7 @@ class Dataset_Mixbag(Dataset_Base):
     def __init__(self, data, lp, choice, confidence_interval, random_state=None):
         super().__init__(data)
         self.lp = lp
-        if len(lp.shape) == 1:
-            self.classes = 2
-        else:
-            self.classes = lp.shape[1]
+        self.classes = lp.shape[1]
         self.choice = choice
         self.CI = confidence_interval
         self.random = np.random.RandomState(random_state)
@@ -135,7 +132,7 @@ class Dataset_Mixbag(Dataset_Base):
             # bs: bag size, w: width, h: height, c: channel
 
             return {
-                "img": mixed_bag,  # img: [10, 3, 32, 32]
+                "data": mixed_bag,  # data: [10, 3, 32, 32]
                 "label_prop": torch.tensor(expected_lp).float(),  # label_prop: [10]
                 "ci_min_value": torch.tensor(ci_min).float(),  # ci_min_value: [10]
                 "ci_max_value": torch.tensor(ci_max).float(),  # ci_max_value: [10]
@@ -150,7 +147,7 @@ class Dataset_Mixbag(Dataset_Base):
             )
 
             return {
-                "img": data,  # img: [10, 3, 32, 32]
+                "data": data,  # data: [10, 3, 32, 32]
                 "label_prop": torch.tensor(lp).float(),  # label_prop: [10]
                 "ci_min_value": ci_min,  # ci_min_value: [10]
                 "ci_max_value": ci_max,  # ci_max_value: [10]
