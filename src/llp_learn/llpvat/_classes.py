@@ -8,8 +8,8 @@ from multiprocessing import cpu_count
 from llp_learn.base import baseLLPClassifier
 from abc import ABC
 
-from ._losses import ConfidentialIntervalLoss, PiModelLoss, VATLoss, consistency_loss_function
-from ._loaders import Dataset_Mixbag
+from ._vat_loss import VATLoss
+from ._loaders import LLP_DATASET
 import torch.nn.functional as F
 from torchvision.models import resnet18
 
@@ -30,32 +30,30 @@ class SimpleMLP(nn.Module):
             x = layer(x)
         return x
 
-class MixBag(baseLLPClassifier, ABC):
+class LLPVAT(baseLLPClassifier, ABC):
     """
-    MixBag implementation based on the original implementation from https://github.com/asanomitakanori/Mixbag.
+    LLPVAT implementation
     """
     
-    def __init__(self, lr, n_epochs, consistency, choice, confidence_interval, model_type="resnet18", device="auto", pretrained=True, hidden_layer_sizes=(100,), xi=1e-6, eps=6.0, ip=1, std=0.15, verbose=False, n_jobs=-1, random_state=None):
+    def __init__(self, lr, n_epochs, xi, eps, ip, model_type="resnet18", device="auto", pretrained=True, hidden_layer_sizes=(100,), verbose=False, n_jobs=-1, random_state=None):
         self.n_epochs = n_epochs
         self.lr = lr
         self.model = None
         self.optimizer = None
-        self.loss_train = ConfidentialIntervalLoss()
-        self.verbose = verbose
-        self.random_state = random_state
-        self.choice = choice
-        self.confidence_interval = confidence_interval
-        self.pretrained = pretrained
-        self.hidden_layer_sizes = hidden_layer_sizes
-        self.model_type = model_type
         self.xi = xi
         self.eps = eps
         self.ip = ip
-        self.std = std
+        self.verbose = verbose
+        self.random_state = random_state
+        self.pretrained = pretrained
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.model_type = model_type
         if device == "auto":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
         else:
             self.device = torch.device(device)
+        
+        self.loss_train = VATLoss(xi=xi, eps=eps, ip=ip).to(self.device)
         
         if model_type != "resnet18" and model_type != "simple-mlp":
             raise NameError("Unknown model type.")
@@ -68,17 +66,6 @@ class MixBag(baseLLPClassifier, ABC):
         torch.cuda.manual_seed(self.seed)  # for cuda
         torch.cuda.manual_seed_all(self.seed)  # for multi-GPU
         torch.backends.cudnn.deterministic = True  # choose the determintic algorithm
-
-        # Consistency loss
-        self.consistency = consistency
-        if consistency == "none":
-            self.consistency_criterion = None
-        elif consistency == "vat":
-            self.consistency_criterion = VATLoss(self.xi, self.eps, self.ip)
-        elif consistency == "pi":
-            self.consistency_criterion = PiModelLoss(self.std)
-        else:
-            raise NameError("Unknown consistency criterion")
 
     def worker_init_fn(self):
         np.random.seed(self.seed)
@@ -111,24 +98,49 @@ class MixBag(baseLLPClassifier, ABC):
 
     def set_params(self, **params):
         self.__dict__.update(params)
-        if "consistency" in params:
-            if params['consistency'] == "none":
-                self.consistency_criterion = None
-            elif params['consistency'] == "vat":
-                self.consistency_criterion = VATLoss(self.xi, self.eps, self.ip)
-            elif params['consistency'] == "pi":
-                self.consistency_criterion = PiModelLoss(self.std)
-            else:
-                raise NameError("Unknown consistency criterion")
 
     def get_params(self):
         return self.__dict__
 
-    def calculate_prop(self, output, nb, bs):
-        output = F.softmax(output, dim=1)
-        output = output.reshape(nb, bs, -1)
-        lp_pred = output.mean(dim=1)
-        return lp_pred
+    def compute_kl_loss_on_bagbatch(self, images, props, epsilon=1e-8):
+        # Forward pass
+        data_info = tuple(images.size())
+        batch_size = data_info[0] # batch_size (number of bags in the batch)
+        bag_size = data_info[1] # bag size
+        shape = data_info[2:] # shape of the data
+        shape = tuple([batch_size * bag_size] + list(shape))
+        images = images.reshape(shape)
+        outputs = self.model(images)
+        prob = nn.functional.softmax(outputs, dim=-1).reshape((batch_size, bag_size, -1))
+        avg_prob = torch.mean(prob, dim=1)
+        avg_prob = torch.clamp(avg_prob, epsilon, 1 - epsilon)
+        loss = torch.sum(-props * torch.log(avg_prob), dim=-1).mean()
+        return loss
+    
+    def sigmoid_rampup(self, current, rampup_length):
+        # modified from https://github.com/kevinorjohn/LLP-VAT/blob/a111d6785e8b0b79761c4d68c5b96288048594d6/llp_vat/
+        """Exponential rampup from https://arxiv.org/abs/1610.02242"""
+        if rampup_length == 0:
+            return 1.0
+        else:
+            current = np.clip(current, 0.0, rampup_length)
+            phase = 1.0 - current / rampup_length
+            return float(np.exp(-5.0 * phase * phase))
+
+
+    def get_rampup_weight(self, weight, iteration, rampup):
+        # modified from https://github.com/kevinorjohn/LLP-VAT/blob/a111d6785e8b0b79761c4d68c5b96288048594d6/llp_vat/
+        alpha = weight * self.sigmoid_rampup(iteration, rampup)
+        return alpha
+
+    def llp_loss_f(self, images, props, iteration):
+        prop_loss = self.compute_kl_loss_on_bagbatch(images, props)
+        alpha = self.get_rampup_weight(0.05, iteration, -1)  # hard-coded based on tsai and lin's implementation
+        shape = tuple(images.size())
+        shape = shape[2:] # shape of the data
+        shape = tuple([-1] + list(shape))
+        vat_loss = self.loss_train(self.model, images.reshape(shape))
+        return prop_loss, alpha, vat_loss
 
     def predict(self, X, batch_size=512):
         test_loader = torch.utils.data.DataLoader(
@@ -172,18 +184,19 @@ class MixBag(baseLLPClassifier, ABC):
 
         unique_bags = sorted(np.unique(bags))
 
-        train_bags = []
-        for bag in unique_bags:
-            bag_i = np.where(bags == bag)[0]
-            train_bags.append(X[bag_i, :])
-
         # Create loaders
-        train_dataset = Dataset_Mixbag(
-            data=train_bags,
-            lp=proportions[unique_bags],
-            choice=self.choice,
-            confidence_interval=self.confidence_interval,
-            random_state=self.random_state
+        bag2indices = {}
+        bag2prop = {}
+        for bag in unique_bags:
+            bag2indices[bag] = np.where(bags == bag)[0]
+            bag2prop[bag] = proportions[bag].astype(np.float32)
+
+        # Create datasets
+        train_dataset = LLP_DATASET(
+            data=X,
+            bag2indices=bag2indices,
+            bag2prop=bag2prop,
+            transform=None,
         )
 
         train_loader = torch.utils.data.DataLoader(
@@ -199,42 +212,17 @@ class MixBag(baseLLPClassifier, ABC):
         with tqdm(range(self.n_epochs), desc='Training model', unit='epoch', disable=not self.verbose) as t:
             for epoch in t:
                 losses = []
-                for batch in tqdm(train_loader, leave=False):
-                    data_info = tuple(batch["data"].size())
-                    nb = data_info[0] # number of bags
-                    bs = data_info[1] # bag size
-                    shape = data_info[2:] # shape of the data
-                    shape = tuple([-1] + list(shape))
+                for i, (batch, props) in enumerate(tqdm(train_loader, leave=False)):
+                    batch = batch.to(self.device)
+                    props = props.to(self.device)
 
-                    data = batch["data"].reshape(shape).to(self.device)
-                    lp_gt = batch["label_prop"].to(self.device)
-                    ci_min_value, ci_max_value = batch["ci_min_value"], batch["ci_max_value"]
+                    prop_loss, alpha, vat_loss = self.llp_loss_f(batch, props, i)
+                    loss = prop_loss + alpha * vat_loss
 
-                    # Consistency loss
-                    consistency_loss = consistency_loss_function(
-                        self.consistency,
-                        self.consistency_criterion,
-                        self.model,
-                        train_loader,
-                        data,
-                        epoch,
-                        batch_size,
-                    )
-
-                    output = self.model(data)
-                    lp_pred = self.calculate_prop(output, nb, bs)
-
-                    loss = self.loss_train(
-                        lp_pred,
-                        lp_gt,
-                        ci_min_value.to(self.device),
-                        ci_max_value.to(self.device),
-                    )
-
-                    loss += consistency_loss
+                    # Backward pass
+                    self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
-                    self.optimizer.zero_grad()
                     losses.append(loss.item())
                 train_loss = np.array(losses).mean()
                 print("[Epoch: %d/%d] train loss: %.4f" % (epoch + 1, self.n_epochs, train_loss))

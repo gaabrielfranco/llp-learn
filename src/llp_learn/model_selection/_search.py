@@ -7,6 +7,8 @@ from joblib import Parallel, delayed, parallel_backend
 import pandas as pd
 import os
 import warnings
+
+import torch
 from ._split import SplitBagKFold, SplitBagBootstrapSplit, SplitBagShuffleSplit, FullBagStratifiedKFold
 import numbers
 
@@ -142,8 +144,14 @@ class gridSearchCV():
         self.best_params_ = df_best_estimator["params"].iloc[0]
 
         if self.refit:
+            print("Best params: ", self.best_params_)
             self.best_estimator_ = deepcopy(self.estimator)
             self.best_estimator_.set_params(**self.best_params_)
+            print(self.best_estimator_.get_params())
+
+            del self.estimator
+            torch.cuda.empty_cache()
+            
             try:
                 self.best_estimator_.fit(X, bags, proportions)
             except ValueError:

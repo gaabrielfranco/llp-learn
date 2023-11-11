@@ -19,6 +19,22 @@ class Dataset_Base(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         """Overload this function in your Dataset."""
         raise NotImplementedError
+    
+class Dataset_LLP(Dataset_Base):
+    """
+    """
+
+    def __init__(self, data, lp):
+        self.data = data
+        self.lp = lp
+        self.len = len(self.data)
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, idx):
+        return self.data[idx], self.lp[idx]
+        
 
 class Dataset_Mixbag(Dataset_Base):
     """

@@ -4,15 +4,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def cross_entropy_loss(input, target, eps=1e-8):
+    # input = torch.clamp(input, eps, 1 - eps)
+    loss = -target * torch.log(input + eps)
+    return loss
+
 class ConfidentialIntervalLoss(nn.Module):
     def __init__(self, eps=1e-8):
         super().__init__()
         self.eps = eps
-        self.loss = nn.KLDivLoss(reduction="batchmean")
 
     def forward(self, pred, target, min_value, max_value):
-        mask_pred = torch.where((pred <= max_value) & (pred >= min_value), target, pred)
-        loss = self.loss(mask_pred.log(), target)
+        mask = torch.where((pred <= max_value) & (pred >= min_value), target, pred)
+        loss = cross_entropy_loss(mask, target, eps=self.eps)
+        loss = torch.sum(loss, dim=-1)
+        loss = loss.mean()
         return loss
 
 @contextlib.contextmanager

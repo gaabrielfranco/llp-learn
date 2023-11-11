@@ -4,6 +4,9 @@ import pandas as pd
 from sklearn.metrics import classification_report, f1_score
 from sklearn.model_selection import ShuffleSplit
 from llp_learn.mixbag import MixBag
+from llp_learn.llpvat import LLPVAT
+from llp_learn.llpgan import LLPGAN
+import torch
 
 def compute_proportions(bags, y):
     """
@@ -41,8 +44,12 @@ seed = [189395, 962432364, 832061813, 316313123, 1090792484,
         411932339, 1446558659, 1448895932,  952198910, 3882231031]
 
 if __name__ == "__main__":
-    #base_dataset = "sample-datasets-ci/cifar-10-grey-animal-vehicle.parquet"
-    base_dataset = "sample-datasets-ci/adult.parquet"
+    import gc
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    base_dataset = "sample-datasets-ci/cifar-10-grey-animal-vehicle.parquet"
+    #base_dataset = "sample-datasets-ci/adult.parquet"
     #base_dataset = "sample-datasets-ci/cifar-10.parquet"
 
     # Reading X, y (base dataset) and bags (dataset)
@@ -51,8 +58,8 @@ if __name__ == "__main__":
     y = df["y"].values
     y = y.reshape(-1)
 
-    #dataset = "sample-datasets-ci/cifar-10-grey-animal-vehicle-hard-large-equal-close-global-cluster-kmeans-5.parquet"
-    dataset = "sample-datasets-ci/adult-hard-large-equal-close-global-cluster-kmeans-5.parquet"
+    dataset = "sample-datasets-ci/cifar-10-grey-animal-vehicle-hard-large-equal-close-global-cluster-kmeans-5.parquet"
+    #dataset = "sample-datasets-ci/adult-hard-large-equal-close-global-cluster-kmeans-5.parquet"
     #dataset = "sample-datasets-ci/cifar-10-intermediate-extra-extra-large-fol-clust-fol-clust-cluster-kmeans-autoencoder-40.parquet"
 
     df = pd.read_parquet(dataset)
@@ -69,8 +76,8 @@ if __name__ == "__main__":
     X_test = X_test.astype(np.float32)
 
     if "cifar" in base_dataset:
-        X_train = X_train.reshape(-1, 3, 32, 32).astype(np.float32)
-        X_test = X_test.reshape(-1, 3, 32, 32).astype(np.float32)
+        X_train = X_train.reshape(-1, 1, 32, 32).astype(np.float32)
+        X_test = X_test.reshape(-1, 1, 32, 32).astype(np.float32)
 
     import torchvision.transforms as transforms
     import torch
@@ -103,29 +110,29 @@ if __name__ == "__main__":
     #             ]
     #         )
 
-    if "cifar" in base_dataset: 
-        transform = transforms.Compose(
-        [transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
+    # if "cifar" in base_dataset: 
+    #     transform = transforms.Compose(
+    #     [transforms.ToTensor(),
+    #     transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
             
-        X_train = X_train.transpose(0, 2, 3, 1)
-        X_test = X_test.transpose(0, 2, 3, 1)
+    #     X_train = X_train.transpose(0, 2, 3, 1)
+    #     X_test = X_test.transpose(0, 2, 3, 1)
 
-        # transform X_train
-        new_X_train = []
-        for elem in X_train:
-            new_X_train.append([transform(elem)])
+    #     # transform X_train
+    #     new_X_train = []
+    #     for elem in X_train:
+    #         new_X_train.append([transform(elem)])
 
-        X_train = torch.from_numpy(np.array(new_X_train)).float()
-        X_train = X_train.reshape(-1, 3, 32, 32)
+    #     X_train = torch.from_numpy(np.array(new_X_train)).float()
+    #     X_train = X_train.reshape(-1, 3, 32, 32)
 
-        # transform X_test
-        new_X_test = []
-        for elem in X_test:
-            new_X_test.append([transform(elem)])
+    #     # transform X_test
+    #     new_X_test = []
+    #     for elem in X_test:
+    #         new_X_test.append([transform(elem)])
         
-        X_test = torch.from_numpy(np.array(new_X_test)).float()
-        X_test = X_test.reshape(-1, 3, 32, 32)
+    #     X_test = torch.from_numpy(np.array(new_X_test)).float()
+    #     X_test = X_test.reshape(-1, 3, 32, 32)
 
     # #Transform X_train and X_test using the same transform to a torch tensor
     # new_X_train = []
@@ -150,18 +157,23 @@ if __name__ == "__main__":
 
 
     from llp_learn.model_selection import gridSearchCV    
-    mb = MixBag(lr=0.01, n_epochs=1, consistency="none", choice="uniform", confidence_interval=0.005, verbose=True, random_state=seed, device="mps", model_type="simple-mlp", hidden_layer_sizes=(100,), n_jobs=N_JOBS)
-    mb.fit(X_train, bags_train, proportions)
-    y_pred = mb.predict(X_test)
-    print(classification_report(y_test, y_pred))
-    print(np.unique(y_pred, return_counts=True))
-    exit()
-    
-    #params = {"lr": [0.1, 0.01], "consistency": ["none", "vat"]}
-    # gs = gridSearchCV(mb, params, n_jobs=1, random_state=seed)
-    # gs.fit(X_train, bags_train, proportions)
-    # y_pred = gs.predict(X_test)
+    #mb = MixBag(lr=0.01, n_epochs=1, consistency="none", choice="uniform", confidence_interval=0.005, verbose=True, random_state=seed, device="mps", model_type="resnet18", n_jobs=N_JOBS)
+    #vat = LLPVAT(lr=0.01, n_epochs=1, xi=10, eps=1.0, ip=1, verbose=True, random_state=seed, device="cpu", model_type="resnet18", n_jobs=N_JOBS)
+    mb = LLPGAN(lr=0.001, n_epochs=1, lambda_=10, noise_dim=512, verbose=True, random_state=seed, device="cuda", n_jobs=N_JOBS)
+    # mb.fit(X_train, bags_train, proportions)
+    # y_pred = mb.predict(X_test)
     # print(classification_report(y_test, y_pred))
     # print(np.unique(y_pred, return_counts=True))
-    # print()
-    # print(gs.best_params_)
+    # exit()
+    
+    #params = {"lr": [0.1, 0.01], "consistency": ["none", "vat"]}
+    params = {"lambda": [0.5]}
+    gs = gridSearchCV(mb, params, n_jobs=1, random_state=seed)
+    gs.fit(X_train, bags_train, proportions)
+    y_pred = gs.predict(X_test)
+    print(classification_report(y_test, y_pred))
+    print(np.unique(y_pred, return_counts=True))
+    print()
+    print(gs.best_params_)
+
+    #TODO: test all of them with FULL BAG K-FOLD
