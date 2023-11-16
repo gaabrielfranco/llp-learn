@@ -6,6 +6,7 @@ from sklearn.model_selection import ShuffleSplit
 from llp_learn.mixbag import MixBag
 from llp_learn.llpvat import LLPVAT
 from llp_learn.llpgan import LLPGAN
+from llp_learn.llpfc import LLPFC
 import torch
 
 def compute_proportions(bags, y):
@@ -159,21 +160,37 @@ if __name__ == "__main__":
     from llp_learn.model_selection import gridSearchCV    
     #mb = MixBag(lr=0.01, n_epochs=1, consistency="none", choice="uniform", confidence_interval=0.005, verbose=True, random_state=seed, device="mps", model_type="resnet18", n_jobs=N_JOBS)
     #vat = LLPVAT(lr=0.01, n_epochs=1, xi=10, eps=1.0, ip=1, verbose=True, random_state=seed, device="cpu", model_type="resnet18", n_jobs=N_JOBS)
-    mb = LLPGAN(lr=0.001, n_epochs=1, lambda_=10, noise_dim=512, verbose=True, random_state=seed, device="cuda", n_jobs=N_JOBS)
+    # mb = LLPGAN(lr=0.001, n_epochs=1, lambda_=10, noise_dim=512, verbose=True, random_state=seed, device="cuda", n_jobs=N_JOBS)
+    mb = LLPFC(lr=0.1, n_epochs=1, verbose=True, random_state=seed, device="cpu", model_type="resnet18", n_jobs=N_JOBS)
     # mb.fit(X_train, bags_train, proportions)
     # y_pred = mb.predict(X_test)
     # print(classification_report(y_test, y_pred))
     # print(np.unique(y_pred, return_counts=True))
     # exit()
-    
-    #params = {"lr": [0.1, 0.01], "consistency": ["none", "vat"]}
-    params = {"lambda": [0.5]}
-    gs = gridSearchCV(mb, params, n_jobs=1, random_state=seed)
-    gs.fit(X_train, bags_train, proportions)
-    y_pred = gs.predict(X_test)
-    print(classification_report(y_test, y_pred))
-    print(np.unique(y_pred, return_counts=True))
-    print()
-    print(gs.best_params_)
 
-    #TODO: test all of them with FULL BAG K-FOLD
+    from llp_learn.model_selection import FullBagStratifiedKFold
+    folds = list(FullBagStratifiedKFold(n_splits=5, random_state=seed).split(X_train, bags_train, proportions))
+    train_idx, val_idx = folds[4]
+
+    X_t, y_t, bags_t = X_train[train_idx], y_train[train_idx], bags_train[train_idx]
+    X_val, y_val, bags_val = X_train[val_idx], y_train[val_idx], bags_train[val_idx]
+
+    mb.fit(X_t, bags_t, proportions)
+    y_pred = mb.predict(X_val)
+    print(classification_report(y_val, y_pred))
+    print(np.unique(y_pred, return_counts=True))
+    exit()
+
+    
+    # params = {"lr": [0.1, 0.01]}
+    # gs = gridSearchCV(mb, params, n_jobs=1, random_state=seed, splitter="full-bag-stratified-k-fold")
+    # gs.fit(X_train, bags_train, proportions)
+    # y_pred = gs.predict(X_test)
+    # print(classification_report(y_test, y_pred))
+    # print(np.unique(y_pred, return_counts=True))
+    # print()
+    # print(gs.best_params_)
+
+#     #TODO: test all of them with FULL BAG K-FOLD
+    # debug why LLPFC is breaking with fullbag kfold (and test it with split-bag shuffle)
+    # TODO: remove np.float32 mentions from the code
