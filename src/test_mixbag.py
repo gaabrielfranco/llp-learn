@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report, f1_score
 from sklearn.model_selection import ShuffleSplit
+from llp_learn.dllp import DLLP
 from llp_learn.mixbag import MixBag
 from llp_learn.llpvat import LLPVAT
 from llp_learn.llpgan import LLPGAN
@@ -161,12 +162,13 @@ if __name__ == "__main__":
     #mb = MixBag(lr=0.01, n_epochs=1, consistency="none", choice="uniform", confidence_interval=0.005, verbose=True, random_state=seed, device="mps", model_type="resnet18", n_jobs=N_JOBS)
     #vat = LLPVAT(lr=0.01, n_epochs=1, xi=10, eps=1.0, ip=1, verbose=True, random_state=seed, device="cpu", model_type="resnet18", n_jobs=N_JOBS)
     # mb = LLPGAN(lr=0.001, n_epochs=1, lambda_=10, noise_dim=512, verbose=True, random_state=seed, device="cuda", n_jobs=N_JOBS)
-    mb = LLPFC(lr=0.1, n_epochs=1, verbose=True, random_state=seed, device="cpu", model_type="resnet18", n_jobs=N_JOBS)
-    # mb.fit(X_train, bags_train, proportions)
-    # y_pred = mb.predict(X_test)
-    # print(classification_report(y_test, y_pred))
-    # print(np.unique(y_pred, return_counts=True))
-    # exit()
+    #mb = LLPFC(lr=0.1, n_epochs=1, verbose=True, random_state=seed, device="cpu", model_type="resnet18", n_jobs=N_JOBS)
+    mb = DLLP(lr=0.01, n_epochs=1, verbose=True, random_state=seed, device="cpu", model_type="resnet18", n_jobs=N_JOBS)
+    mb.fit(X_train, bags_train, proportions)
+    y_pred = mb.predict(X_test)
+    print(classification_report(y_test, y_pred))
+    print(np.unique(y_pred, return_counts=True))
+    exit()
 
     from llp_learn.model_selection import FullBagStratifiedKFold
     folds = list(FullBagStratifiedKFold(n_splits=5, random_state=seed).split(X_train, bags_train, proportions))
