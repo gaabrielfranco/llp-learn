@@ -182,14 +182,21 @@ class LLPVAT(baseLLPClassifier, ABC):
          
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
+        # Create dataset and dataloader
         unique_bags = sorted(np.unique(bags))
+
+        # We have to map the unique bags to the range of 0 to len(unique_bags)-1
+        bags = np.array([unique_bags.index(bag) for bag in bags])
+
+        # Keep the proportions of the unique bags
+        proportions = proportions[unique_bags]
 
         # Create loaders
         bag2indices = {}
         bag2prop = {}
-        for bag in unique_bags:
+        for bag in np.unique(bags):
             bag2indices[bag] = np.where(bags == bag)[0]
-            bag2prop[bag] = proportions[bag].astype(np.float32)
+            bag2prop[bag] = proportions[bag]#.astype(np.float32)
 
         # Create datasets
         train_dataset = LLP_DATASET(

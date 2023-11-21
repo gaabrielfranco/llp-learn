@@ -147,15 +147,22 @@ class LLPFC(baseLLPClassifier, ABC):
          
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
+        # Create dataset and dataloader
         unique_bags = sorted(np.unique(bags))
+
+        # We have to map the unique bags to the range of 0 to len(unique_bags)-1
+        bags = np.array([unique_bags.index(bag) for bag in bags])
+
+        # Keep the proportions of the unique bags
+        proportions = proportions[unique_bags]
 
         # Create loaders
         bag2indices = {}
         bag2prop = {}
         bag2size = {}
-        for bag in unique_bags:
+        for bag in np.unique(bags):
             bag2indices[bag] = np.where(bags == bag)[0]
-            bag2prop[bag] = proportions[bag].astype(np.float32)
+            bag2prop[bag] = proportions[bag]#.astype(np.float32)
             bag2size[bag] = len(bag2indices[bag])
 
         # TODO: transform them to parameters
@@ -187,6 +194,7 @@ class LLPFC(baseLLPClassifier, ABC):
                         shuffle=True,
                         worker_init_fn=self.worker_init_fn(),
                         num_workers=self.n_jobs,
+                        drop_last=True
                     )
 
                 for i, (batch, noisy_y, trans_m, weights) in enumerate(tqdm(train_loader, leave=False)):

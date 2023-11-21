@@ -12,58 +12,48 @@ from abc import ABC
 from torchvision.models import resnet18
 
 from ._loaders import LLPDataset
+import torch.nn.functional as F
 
 np.set_printoptions(threshold=sys.maxsize)
 
-# Source: https://github.com/lucastassis/dllp/blob/main/net.py
-class BatchAvgLayer(nn.Module):
+class KLLossLLP(nn.Module):
     def __init__(self):
-        super(BatchAvgLayer, self).__init__()
+        """
+            KL LLP loss
+        """
+        super().__init__()
 
-    def forward(self, x):
-        return torch.mean(input=x, dim=0)
+    def forward(self, pred, target):
+        # Take the log softmax of the model output
+        pred = F.log_softmax(pred, dim=1)
+        # Batch averager
+        batch_avg = torch.mean(pred, dim=0)
+        # KL divergence loss
+        loss = F.kl_div(batch_avg, target, reduction="batchmean")
+        return loss
 
-class MLPBatchAvg(nn.Module):
-    def __init__(self, model_type, in_features=2, out_features=2, hidden_layer_sizes=(100,), channels=3, classes=2, pretrained=True):
-        super(MLPBatchAvg, self).__init__()
-        if model_type == "simple-mlp":
-            self.layers = nn.ModuleList() 
-            for size in hidden_layer_sizes:
-                self.layers.append(nn.Linear(in_features, size))
-                self.layers.append(nn.ReLU())
-                in_features = size
-            self.layers.append(nn.Linear(hidden_layer_sizes[-1], out_features))
-            self.layers.append(nn.LogSoftmax(dim=1))
-            self.batch_avg = BatchAvgLayer()
-        elif model_type == "resnet18":
-            model = resnet18(weights="IMAGENET1K_V1" if pretrained else None)
-            if model:
-                if channels != 3:
-                    model.conv1 = nn.Conv2d(
-                        channels, 64, kernel_size=7, stride=2, padding=3, bias=False
-                    )
-                model.fc = nn.Linear(model.fc.in_features, classes)
-            self.layers = nn.ModuleList(list(model.children()))
-            self.batch_avg = BatchAvgLayer()
+# Source: https://github.com/lucastassis/dllp/blob/main/net.py
+class SimpleMLP(nn.Module):
+    def __init__(self, in_features, out_features, hidden_layer_sizes=(100,)):
+        super(SimpleMLP, self).__init__()  
+        self.layers = nn.ModuleList() 
+        for size in hidden_layer_sizes:
+            self.layers.append(nn.Linear(in_features, size))
+            self.layers.append(nn.ReLU())
+            in_features = size
+        self.layers.append(nn.Linear(hidden_layer_sizes[-1], out_features))
 
     def forward(self, x): 
         for layer in self.layers:
             x = layer(x)
-        softmax = x.clone()
-        if self.training:
-            x = self.batch_avg(x)
-        return x, softmax
-    
-    def set_params(self, **params):
-        for k, v in params.items():
-            setattr(self, k, v)
+        return x
 
 class DLLP(baseLLPClassifier, ABC):
     def __init__(self, lr, n_epochs, model_type, pretrained=True, hidden_layer_sizes=(100,), verbose=False, device="auto", n_jobs=-1, random_state=None):
         self.n_epochs = n_epochs
         self.lr = lr
         self.hidden_layer_sizes = hidden_layer_sizes
-        self.loss_batch = torch.nn.KLDivLoss(reduction='batchmean')
+        self.loss_train = KLLossLLP()
         self.verbose = verbose
         if device == "auto":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
@@ -83,22 +73,58 @@ class DLLP(baseLLPClassifier, ABC):
         torch.cuda.manual_seed_all(self.seed)  # for multi-GPU
         torch.backends.cudnn.deterministic = True  # choose the determintic algorithm
 
+    def model_import(self, model_type, classes, **kwargs):
+        if model_type == "resnet18":
+            try:
+                pretrained = kwargs["pretrained"]
+                channels = kwargs["channels"]
+            except KeyError:
+                raise NameError("Missing parameters for the model.")
+
+            model = resnet18(weights="IMAGENET1K_V1" if pretrained else None)
+            if model:
+                if channels != 3:
+                    model.conv1 = nn.Conv2d(
+                        channels, 64, kernel_size=7, stride=2, padding=3, bias=False
+                    )
+                model.fc = nn.Linear(model.fc.in_features, classes)
+                model = model.to(self.device)
+        elif model_type == "simple-mlp":
+            try:
+                in_features = kwargs["in_features"]
+                hidden_layer_sizes = kwargs["hidden_layer_sizes"]
+            except KeyError:
+                raise NameError("Missing parameters for the model.")
+            model = SimpleMLP(in_features, classes, hidden_layer_sizes=hidden_layer_sizes)
+            model = model.to(self.device)
+        return model
+
     def worker_init_fn(self):
         np.random.seed(self.seed)
 
     def set_params(self, **params):
-        self.model.set_params(**params)
+        self.__dict__.update(params)
 
     def get_params(self):
         return self.__dict__
 
-    def predict(self, X):
-        with torch.no_grad():
-            X = torch.tensor(X).to(self.device)
-            _, outputs = self.model(X)
-            y_pred = outputs.argmax(dim=1).cpu().tolist()
+    def predict(self, X, batch_size=512):
+        test_loader = torch.utils.data.DataLoader(
+            X,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=self.n_jobs,
+        )
+        y_pred = []
 
-        return y_pred
+        self.model.eval()
+        with torch.no_grad():
+            for batch in test_loader:
+                x = batch.to(self.device)
+                pred = self.model(x)
+                y_pred += pred.argmax(dim=1).cpu().tolist()
+
+        return np.array(y_pred).reshape(-1)
 
     def fit(self, X, bags, proportions):
         if len(proportions.shape) == 1:
@@ -110,11 +136,22 @@ class DLLP(baseLLPClassifier, ABC):
         if classes == 2:
             proportions = np.array([1 - proportions, proportions]).T
 
+        # Create model
         if self.model_type == "resnet18":
-            self.model = MLPBatchAvg(model_type=self.model_type, channels=X.shape[1], classes=classes, pretrained=self.pretrained)
+            self.model = self.model_import(self.model_type, classes, pretrained=self.pretrained, channels=X.shape[1]) # We expect the channels to be the first dimension
         elif self.model_type == "simple-mlp":
-            self.model = MLPBatchAvg(model_type=self.model_type, in_features=X.shape[1], out_features=classes, hidden_layer_sizes=self.hidden_layer_sizes)
+            self.model = self.model_import(self.model_type, classes, in_features=X.shape[1], hidden_layer_sizes=self.hidden_layer_sizes)
+        
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+
+        # Create dataset and dataloader
+        unique_bags = sorted(np.unique(bags))
+
+        # We have to map the unique bags to the range of 0 to len(unique_bags)-1
+        bags = np.array([unique_bags.index(bag) for bag in bags])
+
+        # Keep the proportions of the unique bags
+        proportions = proportions[unique_bags]
 
         train_dataset = LLPDataset(X=X, bags=bags, proportions=proportions)
         data_loader = torch.utils.data.DataLoader(
@@ -133,10 +170,11 @@ class DLLP(baseLLPClassifier, ABC):
                     # prepare bag data
                     X, bag_prop = X[0].to(self.device), bag_prop[0].to(self.device)
                     # compute outputs
-                    batch_avg, outputs = self.model(X) 
+                    outputs = self.model(X)
                     # compute loss and backprop
+                    loss = self.loss_train(outputs, bag_prop)
+                    # Backward pass
                     self.optimizer.zero_grad()
-                    loss = self.loss_batch(batch_avg, bag_prop)
                     loss.backward()
                     self.optimizer.step()
                     losses.append(loss.item())

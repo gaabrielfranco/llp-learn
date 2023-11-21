@@ -254,8 +254,8 @@ class gridSearchCV():
         r = [x for x in r if x is not None]
 
         if len(r) == 0:
-            raise ValueError("There was no (C, C_p) with convergence!")
-        
+            raise ValueError("There was no hyperparameter combination that converged.")
+                
         # Step 5 - Aggregate the results by hyperparameters and compute the mean for each one
         df, df_results = self._aggregate_results(r)
 
