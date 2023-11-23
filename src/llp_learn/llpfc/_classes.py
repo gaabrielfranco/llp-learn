@@ -38,7 +38,7 @@ class LLPFC(baseLLPClassifier, ABC):
     LLPFC implementation
     """
     
-    def __init__(self, lr, n_epochs, model_type="resnet18", device="auto", pretrained=True, hidden_layer_sizes=(100,), verbose=False, n_jobs=-1, random_state=None):
+    def __init__(self, lr, n_epochs, model_type="resnet18", device="auto", pretrained=True, hidden_layer_sizes=(100,), batch_size=128, noisy_prior_choice="approx", weights="uniform", num_epoch_regroup=20, verbose=False, n_jobs=-1, random_state=None):
         self.n_epochs = n_epochs
         self.lr = lr
         self.model = None
@@ -47,7 +47,11 @@ class LLPFC(baseLLPClassifier, ABC):
         self.random_state = random_state
         self.pretrained = pretrained
         self.hidden_layer_sizes = hidden_layer_sizes
+        self.batch_size = batch_size
         self.model_type = model_type
+        self.noisy_prior_choice = noisy_prior_choice
+        self.weights = weights
+        self.num_epoch_regroup = num_epoch_regroup
         if device == "auto":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
         else:
@@ -107,10 +111,10 @@ class LLPFC(baseLLPClassifier, ABC):
     def get_params(self):
         return self.__dict__
     
-    def predict(self, X, batch_size=512):
+    def predict(self, X):
         test_loader = torch.utils.data.DataLoader(
             X,
-            batch_size=batch_size,
+            batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.n_jobs,
         )
@@ -136,9 +140,6 @@ class LLPFC(baseLLPClassifier, ABC):
         if classes == 2:
             proportions = np.array([1 - proportions, proportions]).T
 
-        # Batch size 
-        batch_size = 64 #TODO: change this to a parameter
-
         # Create model
         if self.model_type == "resnet18":
             self.model = self.model_import(self.model_type, classes, pretrained=self.pretrained, channels=X.shape[1]) # We expect the channels to be the first dimension
@@ -162,13 +163,8 @@ class LLPFC(baseLLPClassifier, ABC):
         bag2size = {}
         for bag in np.unique(bags):
             bag2indices[bag] = np.where(bags == bag)[0]
-            bag2prop[bag] = proportions[bag]#.astype(np.float32)
+            bag2prop[bag] = proportions[bag]
             bag2size[bag] = len(bag2indices[bag])
-
-        # TODO: transform them to parameters
-        self.noisy_prior_choice = "approx"
-        self.weights = "uniform"
-        self.num_epoch_regroup = 20
 
         self.model.train()
         
@@ -190,7 +186,7 @@ class LLPFC(baseLLPClassifier, ABC):
 
                     train_loader = torch.utils.data.DataLoader(
                         train_dataset,
-                        batch_size=batch_size,
+                        batch_size=self.batch_size,
                         shuffle=True,
                         worker_init_fn=self.worker_init_fn(),
                         num_workers=self.n_jobs,
