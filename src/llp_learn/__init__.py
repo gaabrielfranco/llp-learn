@@ -4,4 +4,4 @@
 
 from .base import baseLLPClassifier
 
-__all__ = ["alter", "model_selection", "baseLLPClassifier", "util", "em", "base"]
+__all__ = ["alter", "model_selection", "baseLLPClassifier", "util", "em", "base", "llpvat", "dllp", "mixbag"]
