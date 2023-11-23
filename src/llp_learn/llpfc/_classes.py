@@ -1,38 +1,23 @@
-from multiprocessing import cpu_count
 import numpy as np
-from copy import copy, deepcopy
 import torch
 from torch import nn
 from tqdm import tqdm
-from sklearn.utils import shuffle
 import sys
+from multiprocessing import cpu_count
 
 from llp_learn.base import baseLLPClassifier
 from abc import ABC
-from torchvision.models import resnet18
 
-from ._loaders import LLPDataset
+from ._loaders import LLPFC_DATASET
+from ._make_groups import make_groups_forward
+
 import torch.nn.functional as F
+from torchvision.models import resnet18
+from torch.distributions.constraints import simplex
+from torch.utils.data import SubsetRandomSampler
 
 np.set_printoptions(threshold=sys.maxsize)
 
-class KLLossLLP(nn.Module):
-    def __init__(self):
-        """
-            KL LLP loss
-        """
-        super().__init__()
-
-    def forward(self, pred, target):
-        # Take the log softmax of the model output
-        pred = F.log_softmax(pred, dim=1)
-        # Batch averager
-        batch_avg = torch.mean(pred, dim=0)
-        # KL divergence loss
-        loss = F.kl_div(batch_avg, target, reduction="batchmean")
-        return loss
-
-# Source: https://github.com/lucastassis/dllp/blob/main/net.py
 class SimpleMLP(nn.Module):
     def __init__(self, in_features, out_features, hidden_layer_sizes=(100,)):
         super(SimpleMLP, self).__init__()  
@@ -49,24 +34,35 @@ class SimpleMLP(nn.Module):
             x = layer(x)
         return x
 
-class DLLP(baseLLPClassifier, ABC):
-    def __init__(self, lr, n_epochs, model_type, pretrained=True, hidden_layer_sizes=(100,), verbose=False, device="auto", n_jobs=-1, random_state=None):
+class LLPFC(baseLLPClassifier, ABC):
+    """
+    LLPFC implementation
+    """
+    
+    def __init__(self, lr, n_epochs, model_type="resnet18", device="auto", pretrained=True, hidden_layer_sizes=(100,), batch_size=128, noisy_prior_choice="approx", weights="uniform", num_epoch_regroup=20, verbose=False, n_jobs=-1, random_state=None):
         self.n_epochs = n_epochs
         self.lr = lr
-        self.hidden_layer_sizes = hidden_layer_sizes
-        self.loss_train = KLLossLLP()
+        self.model = None
+        self.optimizer = None
         self.verbose = verbose
+        self.random_state = random_state
+        self.pretrained = pretrained
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.batch_size = batch_size
+        self.model_type = model_type
+        self.noisy_prior_choice = noisy_prior_choice
+        self.weights = weights
+        self.num_epoch_regroup = num_epoch_regroup
         if device == "auto":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
         else:
             self.device = torch.device(device)
+                
         if model_type != "resnet18" and model_type != "simple-mlp":
             raise NameError("Unknown model type.")
-        self.model_type = model_type
-        self.model = None
-        self.optimizer = None
-        self.pretrained = pretrained
+        
         self.n_jobs = n_jobs if n_jobs != -1 else cpu_count()
+
         self.seed = random_state if random_state is not None else self.random.randint(2**32-1)
         # Setting the seed for reproducibility in PyTorch
         torch.manual_seed(self.seed)  # fix the initial value of the network weight
@@ -74,6 +70,9 @@ class DLLP(baseLLPClassifier, ABC):
         torch.cuda.manual_seed_all(self.seed)  # for multi-GPU
         torch.backends.cudnn.deterministic = True  # choose the determintic algorithm
 
+    def worker_init_fn(self):
+        np.random.seed(self.seed)
+        
     def model_import(self, model_type, classes, **kwargs):
         if model_type == "resnet18":
             try:
@@ -99,20 +98,24 @@ class DLLP(baseLLPClassifier, ABC):
             model = SimpleMLP(in_features, classes, hidden_layer_sizes=hidden_layer_sizes)
             model = model.to(self.device)
         return model
-
-    def worker_init_fn(self):
-        np.random.seed(self.seed)
+    
+    def loss_train(self, x, y, weights, epsilon=1e-8):
+        assert torch.all(simplex.check(x))
+        x = torch.clamp(x, epsilon, 1 - epsilon)
+        unweighted = nn.functional.nll_loss(torch.log(x), y, reduction='none')
+        weights /= weights.sum()
+        return (unweighted * weights).sum()
 
     def set_params(self, **params):
         self.__dict__.update(params)
 
     def get_params(self):
         return self.__dict__
-
-    def predict(self, X, batch_size=512):
+    
+    def predict(self, X):
         test_loader = torch.utils.data.DataLoader(
             X,
-            batch_size=batch_size,
+            batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.n_jobs,
         )
@@ -128,12 +131,13 @@ class DLLP(baseLLPClassifier, ABC):
         return np.array(y_pred).reshape(-1)
 
     def fit(self, X, bags, proportions):
+        # Get the number of classes
         if len(proportions.shape) == 1:
             classes = 2
         else:
             classes = proportions.shape[1]
 
-        # We will have to convert the proportions array to a 2D array
+        # Since they are using softmax for binary, we will have to convert the proportions array to a 2D array
         if classes == 2:
             proportions = np.array([1 - proportions, proportions]).T
 
@@ -142,7 +146,7 @@ class DLLP(baseLLPClassifier, ABC):
             self.model = self.model_import(self.model_type, classes, pretrained=self.pretrained, channels=X.shape[1]) # We expect the channels to be the first dimension
         elif self.model_type == "simple-mlp":
             self.model = self.model_import(self.model_type, classes, in_features=X.shape[1], hidden_layer_sizes=self.hidden_layer_sizes)
-        
+         
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
         # Create dataset and dataloader
@@ -154,31 +158,58 @@ class DLLP(baseLLPClassifier, ABC):
         # Keep the proportions of the unique bags
         proportions = proportions[unique_bags]
 
-        train_dataset = LLPDataset(X=X, bags=bags, proportions=proportions)
-        data_loader = torch.utils.data.DataLoader(
-            train_dataset,
-            batch_size=1,
-            shuffle=True,
-            worker_init_fn=self.worker_init_fn(),
-            num_workers=self.n_jobs,
-        )
+        # Create loaders
+        bag2indices = {}
+        bag2prop = {}
+        bag2size = {}
+        for bag in np.unique(bags):
+            bag2indices[bag] = np.where(bags == bag)[0]
+            bag2prop[bag] = proportions[bag]
+            bag2size[bag] = len(bag2indices[bag])
 
         self.model.train()
-        with tqdm(range(self.n_epochs), desc='Training model', unit='epoch') as tepoch:
-            for i in tepoch:
+        
+        with tqdm(range(self.n_epochs), desc='Training model', unit='epoch', disable=not self.verbose) as t:
+            for epoch in t:
                 losses = []
-                for X, bag_prop in data_loader:
-                    # prepare bag data
-                    X, bag_prop = X[0].to(self.device), bag_prop[0].to(self.device)
-                    # compute outputs
-                    outputs = self.model(X)
-                    # compute loss and backprop
-                    loss = self.loss_train(outputs, bag_prop)
+                if epoch % self.num_epoch_regroup == 0:
+                    instance2group, group2transition, instance2weight, noisy_y = make_groups_forward(classes, bag2indices, bag2size, bag2prop, self.noisy_prior_choice, self.weights)
+
+                    # Create datasets
+                    train_dataset = LLPFC_DATASET(
+                        data=X,
+                        noisy_y=noisy_y, 
+                        group2transition=group2transition, 
+                        instance2weight=instance2weight, 
+                        instance2group=instance2group,
+                        transform=None,
+                    )
+
+                    train_loader = torch.utils.data.DataLoader(
+                        train_dataset,
+                        batch_size=self.batch_size,
+                        shuffle=True,
+                        worker_init_fn=self.worker_init_fn(),
+                        num_workers=self.n_jobs,
+                        drop_last=True
+                    )
+
+                for i, (batch, noisy_y, trans_m, weights) in enumerate(tqdm(train_loader, leave=False)):
+                    batch = batch.to(self.device)
+                    noisy_y = noisy_y.to(self.device)
+                    trans_m = trans_m.to(self.device)
+                    weights = weights.to(self.device)
+
+                    outputs = self.model(batch)
+                    prob = nn.functional.softmax(outputs, dim=1)
+                    prob_corrected = torch.bmm(trans_m.float(), prob.reshape(prob.shape[0], -1, 1)).reshape(prob.shape[0], -1)
+
+                    loss = self.loss_train(prob_corrected, noisy_y, weights)
+
                     # Backward pass
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
                     losses.append(loss.item())
-                train_loss = np.mean(losses)
-                print("[Epoch: %d/%d] train loss: %.4f" % (i + 1, self.n_epochs, train_loss))
-        
+                train_loss = np.array(losses).mean()
+                print("[Epoch: %d/%d] train loss: %.4f" % (epoch + 1, self.n_epochs, train_loss))

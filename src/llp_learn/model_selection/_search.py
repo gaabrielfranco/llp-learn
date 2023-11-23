@@ -7,6 +7,8 @@ from joblib import Parallel, delayed, parallel_backend
 import pandas as pd
 import os
 import warnings
+
+import torch
 from ._split import SplitBagKFold, SplitBagBootstrapSplit, SplitBagShuffleSplit, FullBagStratifiedKFold
 import numbers
 
@@ -144,6 +146,7 @@ class gridSearchCV():
         if self.refit:
             self.best_estimator_ = deepcopy(self.estimator)
             self.best_estimator_.set_params(**self.best_params_)
+
             try:
                 self.best_estimator_.fit(X, bags, proportions)
             except ValueError:
@@ -251,8 +254,8 @@ class gridSearchCV():
         r = [x for x in r if x is not None]
 
         if len(r) == 0:
-            raise ValueError("There was no (C, C_p) with convergence!")
-        
+            raise ValueError("There was no hyperparameter combination that converged.")
+                
         # Step 5 - Aggregate the results by hyperparameters and compute the mean for each one
         df, df_results = self._aggregate_results(r)
 
