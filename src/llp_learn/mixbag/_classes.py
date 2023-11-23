@@ -21,6 +21,7 @@ class SimpleMLP(nn.Module):
         self.layers = nn.ModuleList() 
         for size in hidden_layer_sizes:
             self.layers.append(nn.Linear(in_features, size))
+            self.layers.append(nn.Dropout(0.5))
             self.layers.append(nn.ReLU())
             in_features = size
         self.layers.append(nn.Linear(hidden_layer_sizes[-1], out_features))
