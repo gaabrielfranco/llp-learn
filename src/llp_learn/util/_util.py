@@ -5,32 +5,33 @@ __all__ = ["compute_proportions", "check_random_state"]
 
 
 def compute_proportions(bags, y):
-    """
-    Compute the proportion of positive samples in each bag.
-
+    """Compute the proportions for each bag given.
     Parameters
     ----------
-    bags : array-like, shape (n_samples,)
-        The bag that each sample belongs to.
-    
-    y : array-like, shape (n_samples,)
-        The labels of the samples.
-    
+    bags : {array-like}
+    y : {array-like}
+
     Returns
     -------
-    proportions : array, shape (n_bags,)
-        The proportion of positive samples in each bag.
+    proportions : {array}
+        An array of type np.float
     """
-    num_bags = int(max(bags)) + 1
-    proportions = np.empty(num_bags, dtype=float)
-    for i in range(num_bags):
-        bag = np.where(bags == i)[0]
-        if len(bag) == 0:
-            proportions[i] = np.nan
-        else:
-            proportions[i] = np.count_nonzero(y[bag] == 1) / len(bag)
-    return proportions
+    n_classes = len(np.unique(y))
+    num_bags = len(np.unique(bags))
 
+    if n_classes == 2:
+        proportions = np.empty(num_bags, dtype=float)
+        for i in range(num_bags):
+            bag = np.where(bags == i)[0]
+            proportions[i] = np.count_nonzero(y[bag] == 1) / len(bag)
+    else:
+        proportions = np.empty((num_bags, n_classes), dtype=float)
+        for i in range(num_bags):
+            bag = np.where(bags == i)[0]
+            for j in range(n_classes):
+                proportions[i, j] = np.count_nonzero(y[bag] == j) / len(bag)
+
+    return proportions
 
 def check_random_state(seed):
     """
