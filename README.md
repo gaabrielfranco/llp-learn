@@ -41,9 +41,6 @@ for i in range(5):
     bag_i = np.where(bags == i)[0]
     proportions[i] = y[bag_i].sum() / len(bag_i)
 
-# Labels must be -1 and 1
-y[y == 0] = -1
-
 # LLP model (DLLP)
 llp_model = DLLP(lr=0.0001, n_epochs=1000, hidden_layer_sizes=(100, 100))
 
