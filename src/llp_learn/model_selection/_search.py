@@ -86,6 +86,11 @@ class gridSearchCV():
                 "There was not possible to compute the error. Verify the loss_type parameter. The value used was: %s" % self.loss_type)
 
     def _evaluate_candidate(self, X, bags, proportions, arg):
+        if len(proportions.shape) == 1:
+            n_classes = 2
+        else:
+            n_classes = proportions.shape[1]
+
         est, param_id, param, train_index, validation_index = arg
         estimator = deepcopy(est)
         estimator.set_params(**param)
@@ -96,7 +101,7 @@ class gridSearchCV():
         y_pred_validation = estimator.predict(X[validation_index])
 
         if self.cv_type == "std":
-            predicted_proportions = np.empty(len(proportions))
+            predicted_proportions = np.empty(proportions.shape, float)
             bag_size_validation = np.empty(len(proportions), int)
             num_bags = len(proportions)
 
@@ -105,11 +110,20 @@ class gridSearchCV():
                 bag_validation = np.where(bags[validation_index] == i)[0]
                 bag_size_validation[i] = len(bag_validation)
                 y_pred_bag_validation = y_pred_validation[bag_validation]
-                if len(bag_validation) == 0:
-                    predicted_proportions[i] = np.nan
+                if n_classes == 2:
+                    if len(bag_validation) == 0:
+                        predicted_proportions[i] = np.nan
+                    else:
+                        predicted_proportions[i] = np.count_nonzero(
+                            y_pred_bag_validation == 1) / len(y_pred_bag_validation)
                 else:
-                    predicted_proportions[i] = np.count_nonzero(
-                        y_pred_bag_validation == 1) / len(y_pred_bag_validation)
+                    if len(bag_validation) == 0:
+                        for j in range(n_classes):
+                            predicted_proportions[i, j] = np.nan
+                    else:
+                        for j in range(n_classes):
+                            predicted_proportions[i, j] = np.count_nonzero(
+                                y_pred_bag_validation == j) / len(y_pred_bag_validation)
 
             err = self._bag_loss(proportions, predicted_proportions).sum()
         elif self.cv_type == "oracle":
