@@ -541,7 +541,7 @@ class MulticlassFullBagStratifiedKFold():
             b = b[~np.in1d(b, assigned_bags)][0] # filter assigned bags and select the bag
             folds[f].add(b)
             assigned_bags.append(b)
-            f_sizes[f] += len_bags[b]
+            f_sizes[f] += m[b]
 
         # Generating the train/test indexes
         for i in range(self.n_splits):
