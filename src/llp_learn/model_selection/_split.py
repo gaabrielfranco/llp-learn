@@ -399,149 +399,71 @@ class FullBagStratifiedKFold():
                 The testing set indices for that split.
         """
 
+        if proportions.ndim == 1:
+            n_classes = 2
+        else:
+            n_classes = proportions.shape[1]
 
         random = check_random_state(self.random_state)
 
-        num_bags = bags.max() + 1
-        len_bags = np.zeros(num_bags, "int64")
+        num_bags = len(np.unique(bags))
+        len_bags = np.zeros(num_bags, int)
         bag_list = list(range(num_bags))
 
         for i in range(num_bags):
             len_bags[i] = len(np.where(bags == i)[0])
 
-        m_plus = np.round(len_bags * proportions).astype(int)
-        m_minus = len_bags - m_plus
-        p_plus = (len_bags * proportions).sum() / len_bags.sum()
 
-        m_plus_squared_sum = (m_plus ** 2).sum()
-        m_minus_squared_sum = (m_minus ** 2).sum()
-        assigned_bags = []
-        f_sizes = np.zeros(self.n_splits, dtype=int)
-        f_plus = np.zeros(self.n_splits, dtype=int)
-        folds = defaultdict(set)
+        if n_classes == 2:
+            m_plus = np.round(len_bags * proportions).astype(int)
+            m_minus = len_bags - m_plus
+            p_plus = (len_bags * proportions).sum() / len_bags.sum()
 
-        # Creating the folds
-        while len(assigned_bags) != num_bags:
-            f = np.argmin(f_sizes)
-            f_p = f_plus[f] / f_sizes[f] if f_sizes[f] != 0 else 0.0
-            if f_p >= p_plus:
-                c = (m_plus ** 2) / m_plus_squared_sum
-            else:
-                c = (m_minus ** 2) / m_minus_squared_sum
+            m_plus_squared_sum = (m_plus ** 2).sum()
+            m_minus_squared_sum = (m_minus ** 2).sum()
+            assigned_bags = []
+            f_sizes = np.zeros(self.n_splits, dtype=int)
+            f_plus = np.zeros(self.n_splits, dtype=int)
+            folds = defaultdict(set)
 
-            c[assigned_bags] = 0
+            # Creating the folds
+            while len(assigned_bags) != num_bags:
+                f = np.argmin(f_sizes)
+                f_p = f_plus[f] / f_sizes[f] if f_sizes[f] != 0 else 0.0
+                if f_p >= p_plus:
+                    c = (m_plus ** 2) / m_plus_squared_sum
+                else:
+                    c = (m_minus ** 2) / m_minus_squared_sum
 
-            b = random.choice(bag_list, size = 1, replace = False, p = c)[0]
+                c[assigned_bags] = 0
 
-            folds[f].add(b)
-            assigned_bags.append(b)
-            f_sizes[f] += len_bags[b]
-            f_plus[f] += m_plus[b]
-            m_plus_squared_sum -= m_plus[b] ** 2
-            m_minus_squared_sum -= m_minus[b] ** 2
+                b = random.choice(bag_list, size = 1, replace = False, p = c)[0]
 
-        # Generating the train/test indexes
-        for i in range(self.n_splits):
-            bags_test = list(folds[i])
-            test_index = np.where(np.isin(bags, bags_test))[0]
-            train_index = np.setdiff1d(np.array(range(len(bags))), test_index)
+                folds[f].add(b)
+                assigned_bags.append(b)
+                f_sizes[f] += len_bags[b]
+                f_plus[f] += m_plus[b]
+                m_plus_squared_sum -= m_plus[b] ** 2
+                m_minus_squared_sum -= m_minus[b] ** 2
+        else:
+            # Multiclass
+            m = np.round(len_bags.reshape(-1, 1) * proportions).astype(int)
+            global_prop = np.sum(m, axis=0) / np.sum(m)
+            assigned_bags = []
+            f_sizes = np.zeros((self.n_splits, n_classes), dtype=int)
+            folds = defaultdict(set)
 
-            yield random.permutation(train_index), random.permutation(test_index)
-
-class MulticlassFullBagStratifiedKFold():
-    """
-        Extension of the Full-Bag K-Fold cross-validator of the paper 
-        "A framework for evaluation in learning from label proportions" for multiclass.
-        Provides train/test indices to split data in train/test sets. Split
-        each bag into k consecutive folds (without shuffling by default).
-        The union of fold i per bag is used once as validation while the union of the k - 1 remaining
-        folds form the training set.
-
-        Args:
-            n_splits (int):
-                Number of folds. Must be at least 2.
-            
-            shuffle (boolean):
-                Whether to shuffle the data before splitting into batches.
-
-            random_state (int, RandomState instance or None):
-                If int, random_state is the seed used by the random number generator;
-
-                If RandomState instance, random_state is the random number generator;
-
-                If None, the random number generator is the RandomState instance used
-                by `np.random`. Only used when ``shuffle`` is True. This should be left
-                to None if ``shuffle`` is False.
-    """
-
-    def __init__(self, n_splits=5, random_state=None):
-        if not isinstance(n_splits, numbers.Integral):
-            raise ValueError("The number of folds must be of Integral type. "
-                             "%s of type %s was passed."
-                             % (n_splits, type(n_splits)))
-        n_splits = int(n_splits)
-        self.n_splits = n_splits
-
-        if n_splits <= 1:
-            raise ValueError(
-                "k-fold cross-validation requires at least one"
-                " train/test split by setting n_splits=2 or more,"
-                " got n_splits={0}.".format(n_splits))
-
-        self.n_splits = n_splits
-        self.random_state = random_state
-
-    def split(self, X, bags, proportions, n_classes):
-        """
-        Generate indices to split data into training and test set.
-
-        Args:
-            X (array-like, shape (n_samples, n_features)):
-                Training data, where n_samples is the number of samples and n_features is the number of features.
-            
-            bags (array-like, shape (n_samples,)):
-                The bag that each element is into.
-            
-            proportions (array-like, shape (n_bags, n_classes)):
-                The proportion of each bag.
-            
-            n_classes (int):
-                Number of classes in the dataset.
-            
-        Yields:
-            train (ndarray):
-                The training set indices for that split.
-
-            test (ndarray):
-                The testing set indices for that split.
-        """
-
-
-        random = check_random_state(self.random_state)
-
-        num_bags = bags.max() + 1
-        len_bags = np.zeros(num_bags, "int64")
-
-        for i in range(num_bags):
-            len_bags[i] = len(np.where(bags == i)[0])
-
-        m = np.round(len_bags.reshape(-1, 1) * proportions).astype(int)
-        global_prop = np.sum(m, axis=0) / np.sum(m)
-        assigned_bags = []
-        f_sizes = np.zeros((self.n_splits, n_classes), dtype=int)
-        folds = defaultdict(set)
-
-        # Creating the folds
-        while len(assigned_bags) != num_bags:
-            f = np.argmin(np.sum(f_sizes, axis=1))
-            c = m + f_sizes[f]
-            c_prop = c / np.sum(c, axis=1).reshape(-1, 1)
-            c_norm = np.linalg.norm(c_prop - global_prop, axis=1)     
-            b = np.argsort(c_norm) # sort values by norm
-            b = b[~np.in1d(b, assigned_bags)][0] # filter assigned bags and select the bag
-            folds[f].add(b)
-            assigned_bags.append(b)
-            f_sizes[f] += m[b]
+            # Creating the folds
+            while len(assigned_bags) != num_bags:
+                f = np.argmin(np.sum(f_sizes, axis=1))
+                c = m + f_sizes[f]
+                c_prop = c / np.sum(c, axis=1).reshape(-1, 1)
+                c_norm = np.linalg.norm(c_prop - global_prop, axis=1)     
+                b = np.argsort(c_norm) # sort values by norm
+                b = b[~np.in1d(b, assigned_bags)][0] # filter assigned bags and select the bag
+                folds[f].add(b)
+                assigned_bags.append(b)
+                f_sizes[f] += m[b]
 
         # Generating the train/test indexes
         for i in range(self.n_splits):
