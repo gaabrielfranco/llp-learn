@@ -67,7 +67,7 @@ class DLLP(baseLLPClassifier, ABC):
         self.optimizer = None
         self.pretrained = pretrained
         self.n_jobs = n_jobs if n_jobs != -1 else cpu_count()
-        self.seed = random_state if random_state is not None else self.random.randint(2**32-1)
+        self.seed = random_state if random_state is not None else np.random.randint(2**32-1)
         # Setting the seed for reproducibility in PyTorch
         torch.manual_seed(self.seed)  # fix the initial value of the network weight
         torch.cuda.manual_seed(self.seed)  # for cuda
