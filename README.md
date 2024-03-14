@@ -42,10 +42,10 @@ for i in range(5):
     proportions[i] = y[bag_i].sum() / len(bag_i)
 
 # LLP model (DLLP)
-llp_model = DLLP(lr=0.0001, n_epochs=1000, hidden_layer_sizes=(100, 100))
+llp_model = DLLP(model_type="simple-mlp", lr=0.0001, n_epochs=1000, hidden_layer_sizes=(100, 100), n_jobs=0)
 
 # Grid Search the lr parameter
-gs = gridSearchCV(llp_model, param_grid={"lr": [0.1, 0.01, 0.001, 0.0001]}, cv=5, validation_size=0.5, n_jobs=-1, random_state=42)
+gs = gridSearchCV(llp_model, param_grid={"lr": [0.1, 0.01, 0.001, 0.0001]}, cv=5, validation_size=0.5, n_jobs=1, random_state=42)
 
 # Train/test split
 train_idx = random.choice(np.arange(X.shape[0]), size=int(X.shape[0] * 0.8), replace=False)
