@@ -430,7 +430,7 @@ class FullBagStratifiedKFold():
             while len(assigned_bags) != num_bags:
                 f = np.argmin(f_sizes)
                 f_p = f_plus[f] / f_sizes[f] if f_sizes[f] != 0 else 0.0
-                if f_p >= p_plus:
+                if f_p <= p_plus:
                     c = (m_plus ** 2) / m_plus_squared_sum
                 else:
                     c = (m_minus ** 2) / m_minus_squared_sum
@@ -458,9 +458,11 @@ class FullBagStratifiedKFold():
                 f = np.argmin(np.sum(f_sizes, axis=1))
                 c = m + f_sizes[f]
                 c_prop = c / np.sum(c, axis=1).reshape(-1, 1)
-                c_norm = np.linalg.norm(c_prop - global_prop, axis=1)     
-                b = np.argsort(c_norm) # sort values by norm
-                b = b[~np.in1d(b, assigned_bags)][0] # filter assigned bags and select the bag
+                c_norm = np.linalg.norm(c_prop - global_prop, axis=1)
+                probs = 1 - c_norm 
+                probs[assigned_bags] = 0 
+                probs = probs / np.sum(probs)
+                b = random.choice(bag_list, size = 1, replace = False, p = probs)[0]
                 folds[f].add(b)
                 assigned_bags.append(b)
                 f_sizes[f] += m[b]
