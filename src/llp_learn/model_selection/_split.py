@@ -458,14 +458,14 @@ class FullBagStratifiedKFold():
                 f = np.argmin(np.sum(f_sizes, axis=1))
                 c = m + f_sizes[f]
                 c_prop = c / np.sum(c, axis=1).reshape(-1, 1)
-                c_norm = np.linalg.norm(c_prop - global_prop, axis=1)
-                probs = 1 - c_norm 
-                probs[assigned_bags] = 0 
-                probs = probs / np.sum(probs)
-                b = random.choice(bag_list, size = 1, replace = False, p = probs)[0]
+                c_dist = np.linalg.norm(c_prop - global_prop, axis=1)
+                c_dist = np.exp(-c_dist)
+                c_probs = c_dist / np.sum(c_dist[np.setdiff1d(bag_list, assigned_bags)])
+                c_probs[assigned_bags] = 0
+                b = random.choice(bag_list, size = 1, replace = False, p = c_probs)[0]
                 folds[f].add(b)
                 assigned_bags.append(b)
-                f_sizes[f] += m[b]
+                f_sizes[f] += m[b]  
 
         # Generating the train/test indexes
         for i in range(self.n_splits):
