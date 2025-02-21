@@ -430,7 +430,12 @@ class FullBagStratifiedKFold():
             while len(assigned_bags) != num_bags:
                 f = np.argmin(f_sizes)
                 f_p = f_plus[f] / f_sizes[f] if f_sizes[f] != 0 else 0.0
-                if f_p <= p_plus:
+                
+                if m_plus_squared_sum == 0:
+                    c = (m_minus ** 2) / m_minus_squared_sum
+                elif m_minus_squared_sum == 0:
+                    c = (m_plus ** 2) / m_plus_squared_sum
+                elif f_p <= p_plus:
                     c = (m_plus ** 2) / m_plus_squared_sum
                 else:
                     c = (m_minus ** 2) / m_minus_squared_sum
